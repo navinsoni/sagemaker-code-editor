@@ -1,5 +1,30 @@
 #!/bin/bash
-set -e
+
+while getopts "v:" opt; do
+  case $opt in
+    v) version="$OPTARG"
+    ;;
+    \?) echo "Invalid option -$OPTARG" >&2
+    exit 1
+    ;;
+  esac
+
+  case $OPTARG in
+    -*) echo "Option $opt needs a valid argument"
+    exit 1
+    ;;
+  esac
+done
+
+if [[ -z $version ]]; then
+ echo "Please provide version using '-v'";
+ exit 1
+fi
+
+VERSION=$version
+
+# set +e to prevent quilt from exiting when no patches popped
+set +e
 
 # Set current project root
 PROJ_ROOT=$(pwd)
@@ -7,6 +32,14 @@ PROJ_ROOT=$(pwd)
 # Clean out patches
 printf "\n======== Cleaning out patches ========\n"
 quilt pop -a
+rm -rf .pc
+
+# empty vscode module
+printf "\n======== Delete data in vs code module if present ========\n"
+rm -rf ${PROJ_ROOT}/vscode/.
+
+# re-enable -e to allow exiting on error
+set -e
 
 # make sure module is current
 printf "\n======== Updating submodule ========\n"
@@ -22,9 +55,30 @@ printf "\n======== Applying patches ========\n"
         exit 1
 }
 
+
+# Generate Licenses
+printf "\n======== Generate Licenses ========\n"
+cd ${PROJ_ROOT}/vscode
+cp LICENSE.txt LICENSE.vscode.txt
+cp ThirdPartyNotices.txt LICENSE-THIRD-PARTY.vscode.txt
+cp ../LICENSE-THIRD-PARTY .
+cd ${PROJ_ROOT}
+
+# Comment out breaking lines in postinstall.js
+printf "\n======== Comment out breaking git config lines in postinstall.js ========\n"
+sh ${PROJ_ROOT}/scripts/postinstall.sh
+
+# Build tarball for conda feedstock from vscode dir
+printf "\n======== Build Tarball for Conda Feedstock ========\n"
+bash ${PROJ_ROOT}/scripts/create_code_editor_tarball.sh -v ${VERSION}
+
 # Copy resources
 printf "\n======== Copy resources ========\n"
 sh ${PROJ_ROOT}/scripts/copy-resources.sh
+
+# Delete node_modules to prevent node-gyp build error
+printf "\n======== Deleting vscode/node_modules ========\n"
+rm -rf "${PROJ_ROOT}/vscode/node_modules"
 
 # Build the project
 printf "\n======== Building project in ${PROJ_ROOT}/vscode ========\n"
